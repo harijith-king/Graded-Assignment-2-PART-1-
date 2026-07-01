@@ -1,15 +1,6 @@
--- ==========================================
--- schema.sql
+
 -- Assignment 2 - Task 1.2
 -- BCNF Schema Implementation
--- ==========================================
-
--- Drop tables if they already exist
-DROP TABLE IF EXISTS Enrollments;
-DROP TABLE IF EXISTS Students;
-DROP TABLE IF EXISTS Courses;
-DROP TABLE IF EXISTS Advisors;
-DROP TABLE IF EXISTS Instructors;
 
 -- ==========================================
 -- Advisors Table
