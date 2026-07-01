@@ -1,66 +1,38 @@
-# Assignment 2 – Database Normalization and Design
-
 ## Task 1.1 – Normalization
 
-### Starting Point
-
-I started with a single flat table that holds everything related to students, their advisors, the courses they take, and the instructors teaching those courses:
+# a) identify the dependencies.
+The composite key given are :
 
 ```
 StudentRecords(
-    student_id,
-    student_name,
-    department,
-    advisor_name,
-    advisor_email,
-    course_code,
-    course_name,
-    instructor_name,
-    instructor_email,
-    enrollment_year,
+    student_id,student_name,department,advisor_name,advisor_email,
+    course_code,course_name,instructor_name,instructor_email,enrollment_year,
     marks_obtained
 )
 ```
-
-Since a student can take multiple courses, the natural primary key here is the composite key `(student_id, course_code)`.
-
-### Functional Dependencies
-
-Looking at the data, these are the functional dependencies I identified:
-
-* advisor_name → advisor_email
-* instructor_name → instructor_email
-* course_code → course_name, instructor_name, instructor_email
-
----
-
-## Partial Dependencies
-
-Because the primary key is composite, a few attributes only depend on `course_code` rather than on the full `(student_id, course_code)` pair:
+# Partial Dependencies
+A partial dependency occurs when a non-key attribute depends on only part of the composite primary key.
+And the primary key given is "(student_id, course_code)"
 
 * course_code → course_name
 * course_code → instructor_name
 * course_code → instructor_email
 
-That's a problem — it means these attributes are partially dependent on the key, which breaks Second Normal Form (2NF).
 
 ---
 
-## Transitive Dependencies
+# Transitive Dependencies
 
-There are also some dependencies between non-key attributes themselves:
+It is defined occurs when a non key attribute depends on another non-key attribute.
 
 * advisor_name → advisor_email
 * instructor_name → instructor_email
 * course_code → instructor_name → instructor_email
 
-This is a textbook transitive dependency — instructor_email depends on instructor_name, which itself depends on course_code rather than directly on the key. That violates Third Normal Form (3NF).
 
 ---
 
-# Decomposing into BCNF
-
-To get rid of the redundancy caused by these dependencies, I split the original table into five smaller relations.
+# b) Decomposing into BCNF
 
 ## 1. Advisors
 
@@ -68,7 +40,7 @@ To get rid of the redundancy caused by these dependencies, I split the original 
 
 **Attributes:** advisor_name, advisor_email
 
-Keeps advisor info in one place instead of repeating it for every student they advise.
+keep advisor in the seperate column.
 
 ---
 
@@ -78,7 +50,7 @@ Keeps advisor info in one place instead of repeating it for every student they a
 
 **Attributes:** instructor_name, instructor_email
 
-Same idea as above, but for instructors — no more repeated instructor emails across every course they teach.
+similar to the advisor 
 
 ---
 
@@ -120,13 +92,13 @@ This table just captures the relationship between a student and a course — the
 
 ---
 
-# Checking Data Integrity
+# c) Checking Data Integrity
 
-## Entity Integrity ✅
+##     Entity Integrity ✅
 
 Every table has its own primary key, and none of those key values can be NULL, so each row is uniquely identifiable.
 
-## Referential Integrity ✅
+##     Referential Integrity ✅
 
 The foreign keys make sure:
 * every student points to a real advisor
@@ -156,18 +128,3 @@ A few business rules can be enforced with constraints:
 * the composite key on Enrollments already stops a student from enrolling in the same course twice
 
 ---
-
-# Why I Designed It This Way
-
-* I decomposed everything down to BCNF to cut out redundancy as much as possible.
-* Advisors and instructors got their own tables so their emails aren't duplicated everywhere.
-* Courses reference instructors, and students reference advisors, both through foreign keys.
-* Enrollments only store what's specific to that student-course pairing — year and marks — nothing that belongs elsewhere.
-
-The end result avoids the classic update, insertion, and deletion anomalies you'd run into with the original flat table.
-
----
-
-# Conclusion
-
-The original `StudentRecords` table mixed together student, advisor, course, and instructor data in a way that caused both partial and transitive dependencies — and a lot of redundant data as a result. By splitting it into **Students**, **Advisors**, **Instructors**, **Courses**, and **Enrollments**, every determinant in the schema is now a candidate key, which satisfies BCNF. The resulting design holds up against entity, referential, domain, and user-defined integrity checks, giving a cleaner and more maintainable database structure overall.
