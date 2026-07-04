@@ -163,3 +163,96 @@ SELECT
 FROM Students s
 JOIN Enrollments e ON s.student_id = e.student_id
 ORDER BY s.department, e.marks_obtained DESC;
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+-- =========================================
+-- Task 1.5
+-- Transactions and Concurrency
+-- ==========================================
+-- (a) Transaction that moves a student from CS101 to CS404
+-- ==========================================
+BEGIN;
+DELETE FROM Enrollments
+WHERE student_id = 1 AND course_code = 'CS101';
+INSERT INTO Enrollments (student_id, course_code, enrollment_year, marks_obtained)
+VALUES (1, 'CS404', 2026, NULL);
+COMMIT;
+
+-- If the INSERT above fails (for example, CS404 does not yet exist in Courses and the foreign key constraint rejects it), run: ROLLBACK;
+-- instead of COMMIT, so the DELETE from CS101 is undone and the student is not left enrolled in neither course.
+
+DO $$
+BEGIN
+    DELETE FROM Enrollments
+    WHERE student_id = 1 AND course_code = 'CS101';
+
+    INSERT INTO Enrollments (student_id, course_code, enrollment_year, marks_obtained)
+    VALUES (1, 'CS404', 2026, NULL);
+
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Insert into CS404 failed, rolling back transfer.';
+    ROLLBACK;
+END $$;
+
+-- ==========================================
+-- (b) Concurrency anomaly:reading marks_obtained twice, getting two different answers because another transaction updated and committed the row in between the two reads
+-- ==========================================  
+--   T1: BEGIN;
+--   T1: SELECT marks_obtained FROM Enrollments WHERE student_id = 1 AND course_code = 'CS102';  -- returns 30.00
+--   T3: BEGIN;
+--   T3: UPDATE Enrollments SET marks_obtained = 45.00 WHERE student_id = 1 AND course_code = 'CS102';
+--   T3: COMMIT;
+--   T1: SELECT marks_obtained FROM Enrollments WHERE student_id = 1 AND course_code = 'CS102';  -- now returns 45.00
+--   T1: COMMIT;
+-- T1 read the same row twice within one transaction and got two different values. This anomaly is called a NON-REPEATABLE READ (also known as a "fuzzy read").
+-- Minimum isolation level that prevents it: REPEATABLE READ.
+-- At REPEATABLE READ, T1's snapshot of any row it has already read stays fixed for the rest of its transaction, so the second SELECT would still return 30.00 even after T3 commits its update. 
+-- READ COMMITTED does NOT prevent this, since it only guards against reading uncommitted data - it happily lets you see a different, newly-committed value on each read.
+
+-- ==========================================
+-- (c) Concurrency anomaly: two transactions both read the same enrollment
+-- count, both conclude there is room, and both insert - exceeding capacity
+-- ==========================================
+
+-- Sequence of events (assume CS102 has a capacity of 2, currently at 1):
+--   T1: BEGIN;
+--   T1: SELECT COUNT(*) FROM Enrollments WHERE course_code = 'CS102';  -- returns 1, room for 1 more
+--   T2: BEGIN;
+--   T2: SELECT COUNT(*) FROM Enrollments WHERE course_code = 'CS102';  -- also returns 1, also thinks there's room
+--   T1: INSERT INTO Enrollments (...) VALUES (..., 'CS102', ...);
+--   T1: COMMIT;
+--   T2: INSERT INTO Enrollments (...) VALUES (..., 'CS102', ...);
+--   T2: COMMIT;
+--   -- CS102 now has 3 enrollments even though capacity was 2
+--
+-- Anomaly: PHANTOM READ / WRITE SKEW
+-- Occurs when a concurrent transaction inserts new rows, altering aggregate 
+-- results (like COUNT(*)) that a running transaction has already relied on. 
+-- Both transactions proceed to write based on a count that the other invalidates.
+--
+-- Minimum Isolation Level: SERIALIZABLE
+-- REPEATABLE READ only locks existing rows; it does not prevent new "phantom" 
+-- rows from appearing and breaking aggregate logic.
+
+
+-- ==========================================
+-- (d) MVCC and snapshot consistency
+-- ==========================================
+
+-- Scenario:
+--   Reporting transaction (R):  BEGIN; SELECT marks_obtained ... ;  -- reads 30.00
+--   Write transaction (W):      BEGIN; UPDATE ... SET marks_obtained = 90.00 ...; COMMIT;
+--   Reporting transaction (R):  SELECT marks_obtained ... again;
+--
+-- Result: R still sees the old value (30.00), despite W committing 90.00.
+--
+-- Why (MVCC): Updates create new row versions rather than overwriting in place. 
+-- Under REPEATABLE READ/SERIALIZABLE, R relies on a fixed snapshot taken when 
+-- its transaction started. W's changes remain invisible until R restarts.
+--
+-- Minimum Isolation Level: REPEATABLE READ (provides snapshot isolation).
+--
+-- Trade-offs vs. READ COMMITTED:
+-- 1. Stale Data: Reads reflect the transaction start time, not real-time state.
+-- 2. Serialization Errors: Concurrent updates to the same rows force app retries.
+-- 3. Table Bloat: Long-running snapshots delay cleanup of old row versions.
